@@ -8,3 +8,5 @@ GraphWeights.py : construction of(for nearest neighbor graphs) affinity matrix, 
 GraphClassifier.py : implementation of MBO, gl_zero_means, gl_supervised
 
 main.py is a demo for the usage of code
+
+someting added by gloria
