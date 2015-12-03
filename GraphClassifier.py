@@ -1,7 +1,7 @@
-'Script for all Graph Classification methods'
-
 import numpy as np 
 from numpy import random
+
+
 
 
 
@@ -98,7 +98,6 @@ class GL_Classifier:
 	takes the graph information and basic parameters during initialization 
 	to avoid proliferation of function arguments
 	"""
-
 	def __init__(self,dt,eps = 1,eta = 1,V = None, E = None, uo = None):
 		self.dt = dt
 		self.eps = eps
