@@ -1,10 +1,14 @@
-# GraphAlgorithms
-This repo contains code for MBO and Ginzburg Landau 
+## Graph Algorithms Package
+===========================
+Python code for graph-cut based algorithms from Prof. Andrea Bertozzi's Research Group
 
-TwoMoons.py : code for generating and plotting the two moons dataset
+This code was created for easier use
 
-GraphWeights.py : construction of(for nearest neighbor graphs) affinity matrix, graph Laplacian, and eigenvectors(from Charlie )
+It is currently maintained by Xiyang "Michael" Luo 
 
-GraphClassifier.py : implementation of MBO, gl_zero_means, gl_supervised
+## References
+==============
 
-main.py is a demo for the usage of code
+Bertozzi, Andrea L., and Arjuna Flenner. "Diffuse interface models on graphs for classification of high dimensional data." *Multiscale Modeling & Simulation* 10.3 (2012): 1090-1118.<a href="http://epubs.siam.org/doi/pdf/10.1137/11083109X">link</a>
+
+
