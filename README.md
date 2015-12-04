@@ -1,13 +1,13 @@
 ## Graph Algorithms Package
 
-Python code for graph-cut based algorithms from Prof. Andrea Bertozzi's Research Group
+- Python code for graph-cut based algorithms from Prof. Andrea Bertozzi's Research Group
 
-This package was created to have easier benchmarking and easier interface with existing machine learning packages in python. 
+- This package was created to have easier benchmarking and easier interface with existing machine learning packages in python. 
 
-It is currently maintained by Xiyang "Michael" Luo, email: mathluo [at] math [dot] ucla [dot] edu
+- It is currently maintained by Xiyang "Michael" Luo, email: mathluo [at] math [dot] ucla [dot] edu
 
 ## Contents
-Implementation of the following algorithms: `Supervised MBO` , `Supervised Ginzburg-Landau`, `MBO-Modularity`, `MBO-Chan Vese`, for both binary and full multi-class classification. 
+Implementation of the following algorithms: `Supervised MBO` , `Supervised Ginzburg-Landau`, `MBO-Modularity`, `MBO-Chan Vese`, for both binary and full multi-class classification, and a few miscellaneous functions. 
 
 ## References
 
