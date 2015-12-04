@@ -12,8 +12,11 @@ reload(util)
 def _diffusion_step_eig(v,V,E,dt):
     """diffusion on graphs
     """
-    u_new = np.dot(V,np.divide(np.dot(V.T,v),(1+dt*E)))
-    return u_new 
+    if len(v.shape) > 1:
+        return np.dot(V,np.divide(np.dot(V.T,v),(1+dt*E)))
+    else:
+        u_new = np.dot(V,np.divide(np.dot(V.T,v[:,np.newaxis]),(1+dt*E)))
+        return u_new.ravel()
 
 def _gl_forward_step(u_old,dt,eps):
     v = u_old-dt/eps*(np.power(u_old,3)-u_old) #double well explicit step
@@ -73,7 +76,7 @@ def gl_binary_supervised_eig(V,E,fid,dt,u_init,eps = 1,eta = 1, tol = 1e-5,Maxit
 
     while (i<Maxiter) and (u_diff > tol):
         u_old = u_new.copy()
-        v = _gl_forward_step_binary(u_old,dt,eps)
+        v = _gl_forward_step(u_old,dt,eps)
         v = _l2_fidelity_gradient_binary(v,dt,fid = fid, eta = eta)
         u_new = _diffusion_step_eig(v,V,E,eps*dt)
         u_diff = (abs(u_new-u_old)).max()
@@ -112,7 +115,7 @@ def mbo_binary_supervised_eig(V,E,fid,dt,u_init,eta = 1, tol = .5,Maxiter = 500,
         u_new = _mbo_forward_step_binary(v)
         u_diff = (abs(u_new-u_old)).sum()
         i = i+1
-    return 
+    return u_new 
 
 ##### Multiclass MBO with fidelity, using eigenvectors #######
 def mbo_multiclass_supervised_eig(V,E,fid,dt,u_init,eta = 1, tol = .5,Maxiter = 500,inner_step_count = 15): # inner stepcount is actually important! and can't be set to 1...
@@ -221,7 +224,7 @@ class LaplacianClustering:
         self.u_init = u_init
         if len(raw_data.shape) == 3:
             self.n_channels = raw_data.shape[2]
-            raw_data = util.flat23(raw_data)
+            self.raw_data = util.flatten_23(raw_data)
         else:
             self.raw_data = raw_data
             self.n_channels = 1
@@ -246,7 +249,7 @@ class LaplacianClustering:
                 else:
                     self.eta = 1.            
 
-    def set_graph_parameters(self, affinity = 'rbf', n_neighbors = None,  kernel_params = None, 
+    def set_graph_parameters(self, affinity = 'rbf', n_neighbors = None,  kernel_params = {}, 
         Neig = None, fid = None,  Eig_solver = 'arpack', precomputed_laplacian = None):
         self.Neig = Neig
         self.Eig_solver = Eig_solver
@@ -258,9 +261,24 @@ class LaplacianClustering:
 
     def build_Laplacian(self):
         if self.Eig_solver == 'nystrom': # add code for Nystrom Extension separately
-            pass
+            if 'kernel_flag' in self.kernel_params:
+                kernel_flag  = self.kernel_params['kernel_flag']
+            else:
+                kernel_flag = True
+            if 'gamma' in self.kernel_params:
+                gamma = self.kernel_params['gamma']
+            else:
+                gamma = None
+            if 'num_nystrom' in self.kernel_params:
+                num_nystrom = self.kernel_params['num_nystrom']
+            else:
+                num_nystrom = self.Neig*2               
+            E,V = util.nystrom(raw_data = self.raw_data,n_channels = self.n_channels, num_nystrom = num_nystrom, kernel_flag = kernel_flag, sigma = gamma )
+            E = E[:self.Neig]
+            V = V[:,:self.Neig]
+            self.laplacian_matrix_ = {'V': V, 'E': E}
         else: 
-            Lap = util.build_laplacian_matrix(raw_data = self.raw_data,affinity = self.affinity, n_neighbors = self.n_neighbors)
+            Lap = util.build_laplacian_matrix(raw_data = self.raw_data,affinity = self.affinity, n_neighbors = self.n_neighbors,kernel_params = self.kernel_params)
             if self.Eig_solver  == 'arpack':
                 E,V = util.generate_eigenvectors(Lap,self.Neig)
                 E = E[:,np.newaxis]
@@ -300,8 +318,12 @@ class LaplacianClustering:
         if self.scheme_type == 'GL_fidelity':
             dt = self.eps/10.
             if type(self.laplacian_matrix_) is dict:
-                self.labels_ = gl_binary_supervised_eig(self.laplacian_matrix_['V'],self.laplacian_matrix_['E'],fid = self.fid ,dt = dt, u_init = self.u_init ,
+                labels = gl_binary_supervised_eig(self.laplacian_matrix_['V'],self.laplacian_matrix_['E'],fid = self.fid ,dt = dt, u_init = self.u_init ,
                     eps = self.eps ,eta = self.eta)
+                self.soft_labels_ = labels
+                labels[labels<0] = -1
+                labels[labels>0] = 1
+                self.labels_ = labels 
             else:
                 pass
         elif self.scheme_type == 'MBO_fidelity':
@@ -316,7 +338,6 @@ class LaplacianClustering:
                     self.labels_ = util.vector_to_labels(res)                  
             else:
                 pass
-        elif self.scheme_type == 'MBO_modularity': 
 
 
     def compute_score(self):
