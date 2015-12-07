@@ -1,6 +1,18 @@
 """ Miscallaneous functions in the utility module
 """
-
+from sklearn.metrics.pairwise import pairwise_kernels 
+from sklearn.neighbors import kneighbors_graph
+import scipy.sparse as spa
+import numpy as np
+from scipy.sparse.linalg import eigsh
+from numpy.random import permutation
+from scipy.sparse.linalg import eigsh
+from numpy.random import permutation
+from scipy.spatial.distance import cdist
+from scipy.linalg import pinv
+from scipy.linalg import sqrtm  
+from scipy.linalg import eigh
+from scipy.linalg import eig
 
 def imageblocks(im, width, format = 'flat'):
     """Extract all blocks of specified size from an image or list of images
@@ -60,7 +72,7 @@ def to_standard_labels(labels):
     out_labels = np.zeros(labels.shape)
     for i, tag in enumerate(tags):
         out_labels[labels == tag] = i
-    return out_labels
+    return out_labels.astype(int)
 
 def vector_to_labels(V):
     """  convert a multiclass assignment vector (n_samples, n_class) 
@@ -75,28 +87,30 @@ def vector_to_labels(V):
     return np.argmax(V, axis = 1)
 
 
-def labels_to_vector(labels):
+def labels_to_vector(in_labels):
     """  convert a standard label 0,1,2... (n_samples,)
     to a multiclass assignment vector (n_samples, n_class) by assigning to e_k
 
     Parameters
     -----------
-    labels : ndarray, shape(n_samples,)
+    in_labels : ndarray, shape(n_samples,)
 
     """
+    labels = to_standard_labels(in_labels)
     labels = labels.astype(int)
-    n_class = max(labels)+1
+    n_class = np.max(labels)+1
     vec = np.zeros([labels.shape[0], n_class])
     for i in range(n_class):
         vec[labels == i,i] = 1.
     return vec
 
 def standard_to_binary_labels(labels):
-	""" convert standard labeling 0,1 to binary labeling -1, 1
-	"""
+    """ convert standard labeling 0,1 to binary labeling -1, 1
+    """
     out_labels = np.zeros(labels.shape)
-    out_labels[labels == 0] = -1
-    out_labels[labels == 1] = 1 
+    foo = np.unique(labels)
+    out_labels[labels == foo[0]] = -1
+    out_labels[labels == foo[1]] = 1 
     return out_labels
 
 
@@ -144,7 +158,75 @@ def compute_error_rate(labels, ground_truth):
     labels = to_standard_labels(labels).astype(int)
     ground_truth = to_standard_labels(ground_truth).astype(int)
     format_labels = np.zeros(labels.shape).astype(int)
-    n_class = max(labels)
-    for tag in range(n_class+1):
+    temp = np.unique(labels)
+    for tag in temp:
        format_labels[labels == tag] = np.argmax(np.bincount(ground_truth[labels == tag].astype(int)))
     return float(len(ground_truth[format_labels!= ground_truth]))/float(len(ground_truth))
+
+def generate_initial_value_binary(opt = 'rd_equal', V = None, n_samples = None):
+    """  generate initial value for binary classification. 
+    individual values are -1, 1 valued. 
+
+    Parameters
+    -----------
+    opt: string :{'rd_equal','rd','eig'}
+        options for generating values
+    V: ndarray (n_samples, Neig)
+        Eigenvector to generate initial condition. 
+    n_samples : int
+        number of nodes in the graph
+
+    """    
+    if opt == 'rd_equal':
+        ind = permutation(n_samples)
+        u_init = np.zeros(n_samples)
+        mid = n_samples/2
+        u_init[ind[:mid]] = 1
+        u_init[ind[mid:]] = -1
+        return u_init
+    elif opt == 'rd':
+        u_init = np.random.uniform(low = -1, high = 1, size = n_samples)
+        return u_init
+    elif opt == 'eig':
+        return V[:,1].copy()
+
+class Parameters: # write a parameter class for easier parameter manipulation
+    def __init__(self, **kwargs):
+        for name in kwargs:
+            if type(kwargs[name]) is type({}):
+                setattr(self,name,Parameters(**kwargs[name]))
+            else:
+                setattr(self,name,kwargs[name])
+    def clear(self,*args):
+        if kwargs:
+            for name in args:
+                delattr(self, name)
+        else: # delete everything 
+            for name in self.__dict__:
+                delattr(self,name)
+    def isin(self, *args): #short hand for determining 
+        if kwargs:
+            for name in args:
+                if not hasattr(self, name):
+                    return False
+            return True
+        else:
+            return True 
+    def set_parameters(self,clear_params = False, **kwargs): #basically just the constructor
+        if clear_params:
+            self.clear()    
+        for name in kwargs:
+            if type(kwargs[name]) is type({}):
+                setattr(self,name,Parameters(**kwargs[name]))
+            else:
+                setattr(self,name,kwargs[name])
+    def set_to_default_parameters(self, default_values):
+        """ complete the missing entries of a set of Parameters
+        using the default_values provided
+        """
+        for name in default_values:
+            if not hasattr(self,name):
+                setattr(self,name,default_values[name])            
+
+
+

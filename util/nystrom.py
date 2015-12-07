@@ -1,7 +1,3 @@
-""" script for Nystrom Extension
-"""
-
-
 import scipy.sparse as spa
 import numpy as np
 from scipy.sparse.linalg import eigsh
@@ -14,9 +10,9 @@ from scipy.linalg import eig
 
 
 def make_kernel(width = None, n_channels = None):
-""" Construct a Gaussian-like patch and flatten 
-the patch to desired format
-"""
+    """ Construct a Gaussian-like patch and flatten 
+    the patch to desired format
+    """
     kernel = np.zeros([2*width+1,2*width+1])
     for d in range(1,width+1):
         value= 1. / ((2*d+1.)*(2*d+1.))
@@ -34,7 +30,7 @@ def flatten_23(v): # short hand for the swapping axis
     return v.reshape(v.shape[0],-1, order = 'F')
 
  
-def nystrom(raw_data, n_channels, num_nystrom = None,  sigma = None,  kernel_flag = True): # crude version
+def nystrom(raw_data, n_channels, graph_params): # crude version
     """ Nystrom Extension
 
 
@@ -43,18 +39,36 @@ def nystrom(raw_data, n_channels, num_nystrom = None,  sigma = None,  kernel_fla
     raw_data : ndarray, shape (n_samples, n_spatial_features, n_channels)
         Raw input data.
     n_channels : number of channels for the original raw_data
-    affinity : string, array-like or callable
-        currently set to 'rbf'
-    num_nystrom : int, 
-        number of sample points 
-    kernel_flag : bool
-        whether to use spatial kernel 
+
+    graph_deg : degree parameter for the graphs. 
+
+    graph_parameters:
+
+        affinity : string, array-like or callable
+            currently set to 'rbf'
+        num_nystrom : int, 
+            number of sample points 
+        kernel_flag : bool
+            whether to use spatial kernel 
 
     Return 
     ----------
     V : eigenvectors, 
     E : eigenvalues    
     """
+
+    if graph_params.distance_kernel_flag != None:
+        kernel_flag  = graph_params.distance_kernel_flag
+    else:
+        kernel_flag = True
+    if graph_params.gamma != None:
+        sigma = graph_params.gamma
+    else:
+        sigma = None
+    if graph_params.num_nystrom != None:
+        num_nystrom = graph_params.num_nystrom
+    else:
+        num_nystrom = graph_params.Neig*2  
 
     #format data to right dimensions
     width = int((np.sqrt(raw_data.shape[1]/n_channels)-1)/2)
@@ -77,7 +91,6 @@ def nystrom(raw_data, n_channels, num_nystrom = None,  sigma = None,  kernel_fla
         distb = cdist(sample_data,other_data,'sqeuclidean')
     if sigma == None:
         sigma = np.percentile(np.percentile(distb, axis = 1, q = 5),q = 40) # a crude automatic kernel
-        print sigma
     B = np.exp(-distb/sigma).astype(np.float32)    
 
     # calculating A
@@ -94,7 +107,8 @@ def nystrom(raw_data, n_channels, num_nystrom = None,  sigma = None,  kernel_fla
     B_T = B.transpose()
     d1 = np.sum(A,axis = 1) + np.sum(B,axis = 1)
     d2 = np.sum(B_T,axis = 1) + np.dot(B_T, np.dot(pinv_A, np.sum(B,axis = 1)))
-    dhat = np.sqrt(1./np.concatenate((d1,d2),axis = 0))
+    graph_deg = np.concatenate((d1,d2),axis = 0)
+    dhat = np.sqrt(1./graph_deg)
     A = A*(np.dot(dhat[0:num_nystrom,np.newaxis],dhat[0:num_nystrom,np.newaxis].transpose()))
     B1 = np.dot(dhat[0:num_nystrom,np.newaxis], dhat[num_nystrom:num_nystrom+other_points,np.newaxis].transpose())
     B = B*B1
@@ -118,7 +132,7 @@ def nystrom(raw_data, n_channels, num_nystrom = None,  sigma = None,  kernel_fla
     V = np.real(V)
     L = 1-L
 
-    return L,V
+    return L,V, graph_deg
 
 
 

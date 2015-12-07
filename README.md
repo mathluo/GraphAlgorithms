@@ -18,3 +18,7 @@ Implementation of the following algorithms: `Supervised MBO` , `Supervised Ginzb
 - Hu, Huiyi, et al. "A method based on total variation for network modularity optimization using the MBO scheme." *SIAM Journal on Applied Mathematics* 73.6 (2013): 2224-2246. <a href="http://epubs.siam.org/doi/pdf/10.1137/130917387" target="_blank"> link</a>
 
 - Hu, Huiyi, et al. "A method based on total variation for network modularity optimization using the MBO scheme." *SIAM Journal on Applied Mathematics* 73.6 (2013): 2224-2246. <a href="http://www.math.ucla.edu/~bertozzi/papers/EMMCVPRfinal.pdf" target="_blank"> link</a>
+
+
+## Note:
+- Current version requires the installation of `sklearn` module. Currently the graph construction are wrappers around functions in the `sklearn.spectral_embeding` modules, but this will be changed later. 
