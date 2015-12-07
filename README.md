@@ -21,4 +21,6 @@ Implementation of the following algorithms: `Supervised MBO` , `Supervised Ginzb
 
 
 ## Note:
-- Current version requires the installation of `sklearn` module. Currently the graph construction are wrappers around functions in the `sklearn.spectral_embeding` modules, but this will be changed later. 
+- Current version requires the installation of `sklearn` module. Nearest Neighbor graphs use the `KDTree` algorithm implemented in sci-kit learn's `sklearn.neighbors.kneighbors_graph` routine. Full graphs are computed using scipy's `cdist` function.
+
+- The unsupervised methods: `MBO_modularity` and `MBO_chan_veses` needs further adjustments and will be updated soon. 
