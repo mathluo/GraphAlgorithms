@@ -1,5 +1,16 @@
-""" Miscallaneous functions in the utility module
-"""
+#--------------------------------------------------------------------------
+# Author: Xiyang Luo <xylmath@gmail.com> , UCLA 
+#
+# This file is part of the diffuse-interface graph algorithm code. 
+# There are currently no licenses. 
+#
+#--------------------------------------------------------------------------
+# Description: 
+#
+#           Miscellaneous function for data preparation.         
+#
+#--------------------------------------------------------------------------
+
 from sklearn.metrics.pairwise import pairwise_kernels 
 from sklearn.neighbors import kneighbors_graph
 import scipy.sparse as spa
@@ -113,6 +124,9 @@ def standard_to_binary_labels(labels):
     out_labels[labels == foo[1]] = 1 
     return out_labels
 
+def to_binary_labels(labels):
+    temp = to_standard_labels(labels)
+    return standard_to_binary_labels(temp)
 
 def generate_initial_value_multiclass(opt , n_samples = None, n_class = None): 
     """  generate initial value for multiclass classification. 
@@ -191,6 +205,16 @@ def generate_initial_value_binary(opt = 'rd_equal', V = None, n_samples = None):
         return V[:,1].copy()
 
 class Parameters: # write a parameter class for easier parameter manipulation
+    """ Class for managing parameters. Initialize with any keyword arguments
+    supports adding, setting, checking, deleting. 
+
+
+
+    Methods :
+    -----------    
+    clear(), isin(), set_parameters(), set_to_default_parameters()
+
+    """ 
     def __init__(self, **kwargs):
         for name in kwargs:
             if type(kwargs[name]) is type({}):
@@ -198,14 +222,15 @@ class Parameters: # write a parameter class for easier parameter manipulation
             else:
                 setattr(self,name,kwargs[name])
     def clear(self,*args):
-        if kwargs:
+        if args:
             for name in args:
                 delattr(self, name)
         else: # delete everything 
-            for name in self.__dict__:
+            fields = self.__dict__.copy()
+            for name in fields:
                 delattr(self,name)
     def isin(self, *args): #short hand for determining 
-        if kwargs:
+        if args:
             for name in args:
                 if not hasattr(self, name):
                     return False

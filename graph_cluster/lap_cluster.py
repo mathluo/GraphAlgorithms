@@ -1,3 +1,16 @@
+#--------------------------------------------------------------------------
+# Author: Xiyang Luo <xylmath@gmail.com> , UCLA 
+#
+# This file is part of the diffuse-interface graph algorithm code. 
+# There are currently no licenses. 
+#
+#--------------------------------------------------------------------------
+# Description: 
+#
+#           Graph Laplacian Based Clustering         
+#
+#--------------------------------------------------------------------------
+
 from sklearn.metrics.pairwise import pairwise_kernels 
 from sklearn.neighbors import kneighbors_graph
 import numpy as np
@@ -5,9 +18,9 @@ import util
 from util import Parameters
 from util.build_graph import _graph_params_default_values
 from util import misc
+from util import BuildGraph
 reload(misc)
 reload(util)
-
 
 
 ################################################################################
@@ -61,7 +74,7 @@ def threshold(u, thre_val = 0):
 
 
 ##### Binary Ginzburg with fidelity, using eigenvectors #######
-def gl_binary_supervised_eig(V,E,fid,dt,u_init,eps = 1,eta = 1, tol = 1e-5,Maxiter = 1000):
+def gl_binary_supervised_eig(V,E,fid,dt,u_init,eps = 1,eta = 1, tol = 1e-5,Maxiter = 500):
     """ Binary Ginzburg Landau with fidelity using eigenvectors
     Parameters
     -----------
@@ -100,7 +113,7 @@ def gl_binary_supervised_eig(V,E,fid,dt,u_init,eps = 1,eta = 1, tol = 1e-5,Maxit
 
 ##### Binary Laplacian Smoothing, using eigenvectors #######
 def lap_binary_supervised_eig(V,E,fid,dt,u_init,eta = 1, tol = .5,Maxiter = 500): # inner stepcount is actually important! and can't be set to 1...
-    """ Binary Laplacian Smoothing 
+    """ Binary Laplacian Smoothing (Used for Benchmarking. Not actually in the LaplacianClustering class)
     Parameters
     -----------
     V : ndarray, shape (n_samples, Neig)
@@ -131,7 +144,7 @@ def lap_binary_supervised_eig(V,E,fid,dt,u_init,eta = 1, tol = .5,Maxiter = 500)
 
 
 ##### Binary MBO with fidelity, using eigenvectors #######
-def mbo_binary_supervised_eig(V,E,fid,dt,u_init,eta = 1, tol = .5,Maxiter = 500,inner_step_count = 15): # inner stepcount is actually important! and can't be set to 1...
+def mbo_binary_supervised_eig(V,E,fid,dt,u_init,eta = 1, tol = .5,Maxiter = 500,inner_step_count = 10): # inner stepcount is actually important! and can't be set to 1...
     """ Binary Ginzburg Landau with fidelity using eigenvectors
     Parameters
     -----------
@@ -152,13 +165,11 @@ def mbo_binary_supervised_eig(V,E,fid,dt,u_init,eta = 1, tol = .5,Maxiter = 500,
     i = 0
     u_new = u_init.copy()
     u_diff = 1
-    fid_ind = fid[:,0]
-    fid_vec = labels_to_vector(fid[:,1])
     while (i<Maxiter) and (u_diff > tol):
         u_old = u_new.copy()
         v = u_old.copy()
         for k in range(inner_step_count):
-            w = _l2_fidelity_gradient_binary(v,dt, eta = eta)
+            w = _l2_fidelity_gradient_binary(v,dt,fid = fid, eta = eta)
             v = _diffusion_step_eig(w,V,E,dt)
         u_new = _mbo_forward_step_binary(v)
         u_diff = (abs(u_new-u_old)).sum()
@@ -167,7 +178,7 @@ def mbo_binary_supervised_eig(V,E,fid,dt,u_init,eta = 1, tol = .5,Maxiter = 500,
 
 
 ##### MBO Zero Means, using eigenvectors #######
-def mbo_zero_means_eig(V,E,dt,u_init,tol = .5,Maxiter = 500,inner_step_count = 15): # inner stepcount is actually important! and can't be set to 1...
+def mbo_zero_means_eig(V,E,dt,u_init,tol = .5,Maxiter = 500,inner_step_count = 5): # inner stepcount is actually important! and can't be set to 1...
     """ The MBO scheme with a forced zero mean constraint. Valid only for binary classification. 
     Parameters
     -----------
@@ -193,7 +204,7 @@ def mbo_zero_means_eig(V,E,dt,u_init,tol = .5,Maxiter = 500,inner_step_count = 1
         u_new = _mbo_forward_step_binary(w)
         u_diff = (abs(u_new-u_old)).sum()
         i = i+1
-    return w 
+    return u_new
 
 ##### MBO Zero Means, using eigenvectors #######
 def gl_zero_means_eig(V,E,dt,u_init,eps = 1, tol = 1e-5,Maxiter = 1000, inner_step_count = 15): 
@@ -306,7 +317,6 @@ def mbo_modularity_eig(V,E,dt,u_init,k_weights,gamma = .5, tol = .5,Maxiter = 50
         u_new = _mbo_forward_step_multiclass(v)
         u_diff = (abs(u_new-u_old)).sum()
         i = i+1
-    print i
     return u_new  
 
 
@@ -331,75 +341,77 @@ class LaplacianClustering(Parameters):
     semi-supervised minimizes approximately |u|_GraphTV + (u-f)^2, f being the fidelity 
     unsupervised minimizes approximately |u|_GraphTV + balancing term for cluster size
     currently only supports binary classifiation. 
-    Parameters
-    -----------
-    scheme_type : {'GL_fidelity','MBO_fidelity','GL_zero_means','MBO_zero_means','MBO_modularity'}
+
+    Class Overview:
+    -----------    
+        Attributes:    
+        -- various scheme specific parameters(scheme_type, fid, eta, eps...)
+        -- self.graph : A BuildGraph Object.
+            Containing graph params and the computed graph Laplacian. 
+        -- self.data : A Parameter Object. 
+            Containing the raw data, ground truth label 
+        Methods : 
+        -- Constructor : set scheme specific parameters. 
+        -- build_graph : build the graph Laplacian, specifying the graph parameters
+        -- load_data : load raw data into model.  
+        -- generate_random_fidelity : generate some random fidelity
+        -- fit_predict : predict labels for the data. 
+
+
+    Class Constructor Parameters
+    ----------------------------
+    scheme_type : String {'GL_fidelity','MBO_fidelity','GL_zero_means','MBO_zero_means','modularity'}
         Types of scheme for the classifiation. First two are for semi-supervised learning, and 
-        last three for unsupervised learning. 
-    raw_data : ndarray, shape (n_samples, n_features)
-        Raw input data.
-    n_channels : int
-        Number of channels, used for image data.         
-    reg_params : dictionary
-        dictionary for the regularization parameters of the model
+        last three for unsupervised learning.     
+    n_class : integer 
+        number of classes (This can be inferred from ground_truth if provided)
     u_init : ndarray, shape(n_samples,)
         initial labels or score for algorithm
-    affinity : string, array-like or callable
-        affinity matrix specification. If a string, this may be one 
-        of 'nearest_neighbors','rbf'. 
-    n_neighbors : integer
-        Number of neighbors to use when constructing the affinity matrix using
-        the nearest neighbors method. Ignored for ``affinity='rbf'``
-    eigen_solver : {None, 'arpack', 'nystrom'}
-        Solver used for computing eigenvectors. Only rbf is supported for nystrom. 
-    kernel_params : dictionary of string to any, optional
-        Parameters (keyword arguments) and values for kernel passed as
     fid : ndarray, shape(num_fidelity, 2)
         index and label of the fidelity points. fid[i,0] 
-    ground_truth : ndarray shape(n_samples,)
-        user supplied ground truth with labels. Used for generating fidelity term
-    Neig : integer
-        number of eigenvectors to compute.
-    Attributes
-    ----------
+    eta : scalar
+        fidelity strength term
+    eps : scalar
+        diffuse interface parameter(only for Ginzburg-Landau schemes)
+    dt : scalar
+        Learning stepsize for the scheme
+
+    Other Class Attributes
+    ---------------------- 
     laplacian_matrix_ : array-like, shape (n_samples, n_samples)
         graph laplacian matrix or a dictionary {'V':V,'E':'E'} containing eigenvectors and
         eigenvalues of the laplacian. 
     labels_ :
-        Labels or the score of each point
-    References
-    ----------
+        Labels or the score of each point    
+    data : Parameters Object
+        raw_data : ndarray, (n_samples, n_features)
+        ground_truth : ndarray, (n_samples,).{0...K-1} labels. 
+    graph : BuildGraph Object
+        See details in util/misc.py
 
     """ 
 
     ## default values for relavant parameters. 
-    _params_default_values = {'scheme_type': None, 'n_class': 2, 'laplacian_matrix_': None ,
-    'iter_params':Parameters(), 'graph_params': Parameters(), 'data':Parameters(), 'ground_truth':None, 
-    'fid':None, 'graph_deg':None}
-
-    _iter_params_default_values = {'eps':1., 'eta':1., 'dt': None , 'gamma':1.}     
+    _params_default_values = {'scheme_type': None, 'n_class': None, 'data': Parameters(), 
+    'fid':None,'eps':None, 'eta':None, 'dt': None, 'u_init' : None} 
 
     def __init__(self, **kwargs): # look how clean the constructor is using inheritance! 
         Parameters.__init__(self,**kwargs)
         self.set_to_default_parameters(self._params_default_values)
-        self.iter_params.set_to_default_parameters(self._iter_params_default_values)
+        self.graph = BuildGraph()
 
-    def load_raw_data(self, raw_data  = None, ground_truth = None, u_init = None, fid = None):
-        if not u_init is None:
-            self.u_init = u_init
+    def load_data(self, raw_data  = None, ground_truth = None):
+        """
+            raw_data : ndarray, (n_samples, n_features)
+            ground_truth : ndarray, (n_samples,).{0...K-1} labels.
+        """
         if not raw_data is None:
-            if len(raw_data.shape) == 3:
-                self.data.n_channels = raw_data.shape[2]
-                self.data.raw_data = util.flatten_23(raw_data)
-            else:
-                self.data.raw_data = raw_data
-                self.data.n_channels = 1
+            self.data.raw_data = raw_data
         if not ground_truth is None:
-            self.ground_truth = ground_truth
-        if not fid is None:
-            self.fid = fid
+            if np.unique(ground_truth).shape[0] == 2 :# convert labels binary case
+                self.data.ground_truth = util.to_binary_labels(ground_truth)
         if not raw_data is None:
-            self.laplacian_matrix_ = None # reset the laplacian matrix every time new data is loaded.  
+            self.graph = BuildGraph() # reset the graph every time new data is loaded  
 
     # def set_parameters(self, scheme_type = None, iter_params = {}, n_class = None, clear_params = False):
     #     if clear_params:
@@ -411,158 +423,225 @@ class LaplacianClustering(Parameters):
     #     if iter_params :
     #         self.iter_params.set(iter_params) ## depreciated, all parameter settings goes to the parameter class        
 
-    def set_graph_parameters(self, **kwargs): #interface for specifically setting graph parameters
-        self.graph_params.set_parameters(**kwargs)
-        self.graph_params.set_to_default_parameters(_graph_params_default_values)
+    def set_graph_params(self,**kwargs):
+        try : 
+            self.graph.set_parameters(**kwargs)
+        except : 
+            raise AttributeError("self.graph Non-existent. Use .build_Laplacian() to construct the graph object")
 
+    def build_graph(self, **kwargs): # build the graph Laplacian
+        """ Construct and compute the graph Laplacian
 
-    def build_Laplacian(self):
-        if self.graph_params.Eig_solver == 'nystrom': # add code for Nystrom Extension separately             
-            E,V, graph_deg = util.nystrom(raw_data = self.data.raw_data,n_channels = self.data.n_channels, graph_params = self.graph_params )
-            E = E[:self.graph_params.Neig]
-            V = V[:,:self.graph_params.Neig]
-            self.laplacian_matrix_ = {'V': V, 'E': E}
-            self.graph_deg = graph_deg
-        else: 
-            Lap,graph_deg = util.build_laplacian_matrix(raw_data = self.data.raw_data,graph_params = self.graph_params)
-            self.graph_deg = graph_deg
-            if self.graph_params.Eig_solver  == 'arpack':
-                E,V = util.generate_eigenvectors(Lap,self.graph_params.Neig)
-                E = E[:,np.newaxis]
-                self.laplacian_matrix_ = {'V': V, 'E': E}
-                return 
-            elif self.graph_params.Eig_solver == 'full':
-                self.laplacian_matrix_ = Lap
-                return
+        keyword arguments : 
+        -----------
+        Eig_solver : string
+            'full' : compute the full Laplacian matrix 
+            'nystrom' : specify Neig, num_nystrom(number of samples), gamma
+            'arpack' : specify Neig
+        (--Not using Nystrom)
+            affinity : string
+                'rbf' : use rbf kernel  exp(|x-y|^2/gamma)
+                    specify gamma, neighbor_type = 'full', or 'knearest' with n_neighbors
+                'z-p' : adaptive kernel 
+                    specify n_neighbors
+                '0-1' : return an unweighted graph 
+                    specify n_neighbors
+            gamma : double
+                width of the rbf kernel
+            n_neighbors : integer
+                Number of neighbors to use when constructing the affinity matrix using
+                the nearest neighbors method. 
+            neighbor_type : string. 
+                'full' 'knearest'
+        (--Using Nystrom)
+            affinity : only 'rbf' 
+            gamma : required
+            num_nystrom : number of sample points
+        Laplacian_type : 'n', normalized, 'u', unnormalized
+        """
+        if kwargs:
+            if hasattr(self,'graph'):
+                self.clear('graph')
+            self.graph = BuildGraph(**kwargs)
+        self.graph.build_Laplacian(self.data.raw_data)
 
     def generate_initial_value(self, opt = 'rd_equal'):
         if self.n_class == 2:
             if opt != 'eig':
                 self.u_init = util.generate_initial_value_binary(opt = opt, V = None, n_samples = self.data.raw_data.shape[0])
-                if 'modularity' in self.scheme_type:
+                if 'modularity' in self.scheme_type: #the modularity method has inherently 0-1 vector labels
                     self.u_init = util.labels_to_vector(util.to_standard_labels(threshold(self.u_init)))
             else:
-                self.u_init = util.generate_initial_value_binary(opt = 'eig', V = self.laplacian_matrix_['V'])
+                try:
+                    self.u_init = util.generate_initial_value_binary(opt = 'eig', V = self.graph.laplacian_matrix_['V'])
+                except KeyError:
+                    raise KeyError("laplacian_matrix_ needs to be in eigenvector format")
         elif opt != 'eig':
             self.u_init = util.generate_initial_value_multiclass(opt = opt, n_samples = self.data.raw_data.shape[0], n_class = self.n_class)
-
+        else:
+            raise NameError("Eig Option is currently unavailable for multiclass data")
 
 
     def generate_random_fidelity(self,percent = .05):
-        tags = np.unique(self.ground_truth)
+        try : 
+            tags = np.unique(self.data.ground_truth)
+        except AttributeError:
+            raise AttributeError("Please provide ground truth")
         self.fid = np.zeros([0,2])
         for i, tag in enumerate(tags):
-            ind_temp = util.generate_random_fidelity(ind =  np.where(self.ground_truth == tag)[0] , perc = percent)
+            ind_temp = util.generate_random_fidelity(ind =  np.where(self.data.ground_truth == tag)[0] , perc = percent)
             ind_temp = ind_temp.reshape(len(ind_temp), 1)
             tag_temp = tag*np.ones([len(ind_temp),1])
             fid_temp = np.concatenate((ind_temp, tag_temp), axis = 1)
             self.fid = np.concatenate((self.fid,fid_temp), axis = 0)
 
-    def get_graph_deg(self):
-        return self.graph_deg
 
     def fit_predict(self):
         # build the laplacian if there is non existent
-        if self.laplacian_matrix_ ==  None:
-            self.build_Laplacian()
+        if hasattr(self,'labels_'):
+            self.clear('labels_')
+        try:
+            if self.graph.laplacian_matrix_ is None:
+                raise AttributeError("Build The Graph using build_graph() before calling fit_predict")
+        except AttributeError:
+            raise AttributeError("Build The Graph using build_graph() before calling fit_predict")
+        # infer the label from ground_truth if available. 
+        try : 
+            if self.n_class is None:
+                if not self.data.ground_truth is None:
+                    self.n_class = np.unique(self.data.ground_truth).shape[0] 
+                else:
+                    raise AttributeError("No ground truth found. Need to specify n_class via set_parameters() ")
+        except : 
+            raise AttributeError("Either the data or the ground_truth is not specified. Cannot infer class number")
+
+        if self.scheme_type.find("fidelity") != -1:
+            if self.fid is None:
+                print("Fidelity point not provided. Generating 5 percent random fidelity.")
+                self.generate_random_fidelity()
+
+        if self.u_init is None:
+            print("u_init not provided. Generating random initial condition.")
+            self.generate_initial_value()
 
         # check if the laplacian is in eigenvector form
-        if type(self.laplacian_matrix_) is dict:
-            V = self.laplacian_matrix_['V']
-            E = self.laplacian_matrix_['E']
+        if type(self.graph.laplacian_matrix_) is dict:
+            V = self.graph.laplacian_matrix_['V']
+            E = self.graph.laplacian_matrix_['E']
 
         # wrapper to check which scheme to use.     
         if self.scheme_type == 'GL_fidelity':
-            eps = (1. if (self.iter_params.eps == None) else self.iter_params.eps )           
-            dt = (eps/10. if (self.iter_params.dt == None) else self.iter_params.dt)
-            eta = (1. if (self.iter_params.eta == None) else self.iter_params.eta )               
-            if type(self.laplacian_matrix_) is dict:
-                labels = gl_binary_supervised_eig(self.laplacian_matrix_['V'],self.laplacian_matrix_['E'],fid = self.fid ,dt = dt, u_init = self.u_init ,
-                    eps = eps ,eta = eta)
+            if self.eta is None:
+                self.eta = 1
+                print("Warning, fidelity strength eta not supplied. Using default value 1")      
+            if self.dt is None:
+                self.dt = .5
+                print("Warning, stepsize dt not supplied. Using default value .1")   
+            if self.eps is None:
+                self.eps = 1
+                print("Warning, scale interface parameter eps not supplied. Using default value 1")                     
+            if type(self.graph.laplacian_matrix_) is dict:
+                labels = gl_binary_supervised_eig(self.graph.laplacian_matrix_['V'],self.graph.laplacian_matrix_['E'],fid = self.fid ,dt = self.dt, u_init = self.u_init ,
+                    eps = self.eps ,eta = self.eta)
                 self.soft_labels_ = labels
                 labels[labels<0] = -1
                 labels[labels>0] = 1
                 self.labels_ = labels 
-            else:
-                pass
+            elif type(self.graph.laplacian_matrix_) is np.ndarray:
+                print("Full Laplacian Scheme not implemented yet") # use the full Laplacian to solve. Not implemented yet. 
+                return
+            else : 
+                raise AttributeError("laplacian_matrix_ type error. Please rebuild the graph")
         elif self.scheme_type == 'MBO_fidelity':        
-            eta = (1. if (self.iter_params.eta == None) else self.iter_params.eta )  
-            dt = (eta/5. if (self.iter_params.dt == None) else self.iter_params.dt )             
+            if self.eta is None:
+                self.eta = 1
+                print("Warning, fidelity strength eta not supplied. Using default value 1")      
+            if self.dt is None:
+                self.dt = 1
+                print("Warning, stepsize dt not supplied. Using default value 1")                
 
-            if type(self.laplacian_matrix_) is dict:
+            if type(self.graph.laplacian_matrix_) is dict:
                 if self.n_class == 2:
-                    foo = self.fid.copy() #convert to binary labels! (this is frustrating but necessary)
-                    foo[:,1] = util.standard_to_binary_labels(foo[:,1])
-                    self.labels_ = mbo_binary_supervised_eig(self.laplacian_matrix_['V'],self.laplacian_matrix_['E'],fid = foo ,dt = dt, u_init = self.u_init ,
-                    eta = eta)
+                    self.labels_ = mbo_binary_supervised_eig(self.graph.laplacian_matrix_['V'],self.graph.laplacian_matrix_['E'],fid = self.fid 
+                        ,dt = self.dt, u_init = self.u_init ,eta = self.eta)
                 else:
-                    res = mbo_multiclass_supervised_eig(self.laplacian_matrix_['V'],self.laplacian_matrix_['E'],fid = self.fid ,dt = dt, u_init = self.u_init ,
-                    eta = eta) 
+                    res = mbo_multiclass_supervised_eig(self.graph.laplacian_matrix_['V'],self.graph.laplacian_matrix_['E'],fid = self.fid ,dt = self.dt, 
+                        u_init = self.u_init ,eta = self.eta) 
                     self.labels_ = util.vector_to_labels(res)                  
-            else:
-                pass
-        elif self.scheme_type == 'Lap_fidelity':
-            eta = (1. if (self.iter_params.eta == None) else self.iter_params.eta )  
-            dt = (eta/5. if (self.iter_params.dt == None) else self.iter_params.dt ) 
-
-            if type(self.laplacian_matrix_) is dict:
+            elif type(self.graph.laplacian_matrix_) is np.ndarray:
+                print("Full Laplacian Scheme not implemented yet") # use the full Laplacian to solve. Not implemented yet. 
+                return
+            else : 
+                raise AttributeError("laplacian_matrix_ type error. Please rebuild the graph")    
+        elif self.scheme_type == 'MBO_zero_means':    
+            if self.dt is None:
+                self.dt = .1
+                print("Warning, stepsize dt not supplied. Using default value .1")   
+            if type(self.graph.laplacian_matrix_) is dict:
                 if self.n_class == 2:
-                    labels = lap_binary_supervised_eig(self.laplacian_matrix_['V'],self.laplacian_matrix_['E'],fid = self.fid ,dt = dt, u_init = self.u_init ,
-                    eta = eta)
-                    self.soft_labels_ = labels
-                    labels[labels<0] = -1
-                    labels[labels>0] = 1
-                    self.labels_ = labels                     
+                    self.labels_ = mbo_zero_means_eig(self.graph.laplacian_matrix_['V'],self.graph.laplacian_matrix_['E'],dt = self.dt, u_init = self.u_init)                 
                 else:
-                    res = mbo_multiclass_supervised_eig(self.laplacian_matrix_['V'],self.laplacian_matrix_['E'],fid = self.fid ,dt = dt, u_init = self.u_init ,
-                    eta = eta) 
-                    self.labels_ = util.vector_to_labels(res)                  
-            else:
-                pass        
-        elif self.scheme_type == 'MBO_zero_means':
-            dt = (2. if (self.iter_params.dt == None) else self.iter_params.dt ) 
-            if type(self.laplacian_matrix_) is dict:
-                if self.n_class == 2:
-                    self.labels_ = mbo_zero_means_eig(self.laplacian_matrix_['V'],self.laplacian_matrix_['E'],dt = dt, u_init = self.u_init)                 
-                else:
-                    print "Only supports Binary classifiation"
+                    print ("Only supports Binary classifiation")
                     return                    
-            else:
-                pass 
+            elif type(self.graph.laplacian_matrix_) is np.ndarray:
+                print("Full Laplacian Scheme not implemented yet") # use the full Laplacian to solve. Not implemented yet. 
+                return
+            else : 
+                raise AttributeError("laplacian_matrix_ type error. Please rebuild the graph") 
         elif self.scheme_type == 'GL_zero_means':
-            eps = (1. if (self.iter_params.eps == None) else self.iter_params.eps )           
-            dt = (eps/5. if (self.iter_params.dt == None) else self.iter_params.dt)
+            if self.eta is None:
+                self.eta = 1
+                print("Warning, fidelity strength eta not supplied. Using default value 1")      
+            if self.dt is None:
+                self.dt = .1
+                print("Warning, stepsize dt not supplied. Using default value .1")       
 
-            if type(self.laplacian_matrix_) is dict:
+            if type(self.graph.laplacian_matrix_) is dict:
                 if self.n_class == 2:
-                    labels = gl_zero_means_eig(self.laplacian_matrix_['V'],self.laplacian_matrix_['E'],eps = eps,dt = dt, u_init = self.u_init )
+                    labels = gl_zero_means_eig(self.graph.laplacian_matrix_['V'],self.graph.laplacian_matrix_['E'],eps = self.eps,dt = self.dt, u_init = self.u_init )
                     self.soft_labels_ = labels
                     labels[labels<0] = -1
                     labels[labels>0] = 1
                     self.labels_ = labels                     
                 else:
-                    print "Only supports Binary classifiation"
+                    print ("Only supports Binary classifiation")
                     return                 
-            else:
-                pass   
+            elif type(self.graph.laplacian_matrix_) is np.ndarray:
+                print("Full Laplacian Scheme not implemented yet") # use the full Laplacian to solve. Not implemented yet. 
+                return
+            else : 
+                raise AttributeError("laplacian_matrix_ type error. Please rebuild the graph") 
 
         elif self.scheme_type == 'MBO_modularity':
             if(self.graph_params.Laplacian_type != 'u'):
-                print "Warning: The algorithm assumes the use of unnormalized Laplacian"
+                print ("Warning: The algorithm assumes the use of unnormalized Laplacian")
                 temp = np.ones([self.data.raw_data.shape[0],1])
             else:
                 temp = self.graph_deg
-            gamma = (1. if (self.iter_params.gamma == None) else self.iter_params.gamma )           
-            dt = (1. if (self.iter_params.dt == None) else self.iter_params.dt)
-            if type(self.laplacian_matrix_) is dict:
-                res = mbo_modularity_eig(self.laplacian_matrix_['V'],self.laplacian_matrix_['E'],k_weights = temp, dt = dt, u_init = self.u_init, gamma = gamma )
+            if self.gamma is None:
+                self.gamam = 1
+                print("Warning, Modularity parameter gamma not supplied. Using default value 1")      
+            if self.dt is None:
+                self.dt = .1
+                print("Warning, stepsize dt not supplied. Using default value .1")                   
+            if type(self.graph.laplacian_matrix_) is dict:
+                res = mbo_modularity_eig(self.graph.laplacian_matrix_['V'],self.graph.laplacian_matrix_['E'],k_weights = temp, 
+                    dt = self.dt, u_init = self.u_init, gamma = self.gamma )
                 self.labels_ = util.vector_to_labels(res)                 
-            else:
-                pass  
+            elif type(self.graph.laplacian_matrix_) is np.ndarray:
+                print("Full Laplacian Scheme not implemented yet") # use the full Laplacian to solve. Not implemented yet. 
+                return
+            else : 
+                raise AttributeError("laplacian_matrix_ type error. Please rebuild the graph")
 
 
     def compute_error_rate(self):
-        self.error_rate_ = util.compute_error_rate(ground_truth = self.ground_truth, labels = self.labels_)
+        try : 
+            if (self.data.ground_truth is None):
+                raise ValueError("Please provide ground truth labels when using compute_error_rate() ")
+        except : 
+            raise ValueError("Please provide ground truth labels when using compute_error_rate() ")       
+        self.error_rate_ = util.compute_error_rate(ground_truth = self.data.ground_truth, labels = self.labels_)
         return self.error_rate_
 
 

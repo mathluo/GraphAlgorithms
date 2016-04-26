@@ -1,3 +1,16 @@
+#--------------------------------------------------------------------------
+# Author: Xiyang Luo <xylmath@gmail.com> , UCLA 
+#
+# This file is part of the diffuse-interface graph algorithm code. 
+# There are currently no licenses. 
+#
+#--------------------------------------------------------------------------
+# Description: 
+#
+#           Build Weight Matrix and Graph Laplacians        
+#
+#--------------------------------------------------------------------------
+
 from sklearn.metrics.pairwise import pairwise_kernels 
 from sklearn.neighbors import kneighbors_graph
 import scipy.sparse as spa
@@ -6,11 +19,12 @@ from scipy.spatial.distance import cdist
 from scipy.sparse.linalg import eigsh
 from numpy.random import permutation
 from misc import Parameters
+from nystrom import nystrom
 
 
-_graph_params_default_values = {'affinity': 'rbf', 'n_neighbors': None, 'Laplacian_type': 'n',
-'gamma': None, 'Neig' : None, 'Eig_solver': 'arpack', 
-'distance_kernel_flag': None, 'num_nystrom': None, 'neighbor_type':None}
+_graph_params_default_values = {'affinity': 'rbf', 'n_neighbors': None, 
+'Laplacian_type': 'n','gamma': None, 'Neig' : None, 'Eig_solver': 'full', 
+'num_nystrom': None, 'neighbor_type':'full','laplacian_matrix_':None }
 
 
 def build_affinity_matrix(raw_data,graph_params):
@@ -21,26 +35,33 @@ def build_affinity_matrix(raw_data,graph_params):
         Raw input data.
     graph_params : Parameters with fields below:
 
-        affinity : string, array-like or callable
-            affinity matrix specification. If a string, this may be one 
-            of 'nearest_neighbors','rbf'. 
+        affinity : string
+            'rbf' : use rbf kernel  exp(|x-y|^2/gamma)
+                specify gamma, neighbor_type = 'full', or 'knearest' with n_neighbors
+            'z-p' : adaptive kernel 
+                specify n_neighbors
+            '0-1' : return an unweighted graph 
+                specify n_neighbors
+        gamma : double
+            width of the rbf kernel
         n_neighbors : integer
             Number of neighbors to use when constructing the affinity matrix using
-            the nearest neighbors method. Ignored for ``affinity='rbf'``
+            the nearest neighbors method. 
+        neighbor_type : string. 
+            'full' 'knearest'
         Laplacian_type : 'n', normalized, 'u', unnormalized
     Return 
     ----------
     affinity_matrix_ : array-like, shape (n_samples, n_samples)
         affinity matrix
-    graph_degree : return the degree of the graph
-
-    References
-    ----------
 
     """ 
 
     # compute the distance matrix
+    affinity_matrix_ = None
     if graph_params.affinity == 'z-p': #Z-P distance, adaptive RBF kernel, currently slow!!
+        if graph_params.n_neighbors is None:
+            raise ValueError("Please Specify number nearest points in n_neighbors")
         k = graph_params.n_neighbors
         dist_matrix = cdist(raw_data,raw_data,'sqeuclidean')
         tau = np.ones([raw_data.shape[0],1])
@@ -53,16 +74,15 @@ def build_affinity_matrix(raw_data,graph_params):
             row[row<foo] =0
         affinity_matrix_ = np.maximum(temp, temp.T)
     else:
-        if graph_params.neighbor_type != None:
-            if graph_params.neighbor_type == 'connectivity':
+        if graph_params.neighbor_type != 'full':
+            if graph_params.affinity == '0-1':
                 connectivity = kneighbors_graph(raw_data, n_neighbors=graph_params.n_neighbors, include_self=True)
                 affinity_matrix_ = 0.5 * (connectivity + connectivity.T)
                 affinity_matrix_[affinity_matrix_ == 1.] = 0. 
-                graph_degree = affinity_matrix_.sum(axis = 0)
-                return affinity_matrix_, graph_degree                
+                return affinity_matrix_               
 
                            
-            elif graph_params.neighbor_type == 'distance':
+            elif graph_params.neighbor_type == 'knearest':
                 distance_matrix = kneighbors_graph(raw_data, n_neighbors=graph_params.n_neighbors, include_self=True, mode = 'distance')
                 distance_matrix = distance_matrix*distance_matrix # square the distance
                 dist_matrix = 0.5 * (distance_matrix + distance_matrix.T)
@@ -78,8 +98,7 @@ def build_affinity_matrix(raw_data,graph_params):
     affinity_matrix_[affinity_matrix_ == 1.] = 0. 
     d_mean = np.mean(np.sum(affinity_matrix_,axis = 0))
     affinity_matrix_ = affinity_matrix_/d_mean
-    graph_degree = affinity_matrix_.sum(axis = 0)
-    return affinity_matrix_, graph_degree
+    return affinity_matrix_
 
 
 
@@ -121,11 +140,11 @@ def build_laplacian_matrix(raw_data,graph_params):
     """ Wrapper for building the normalized Laplacian directly from raw data
 
     """
-    W , graph_degree = build_affinity_matrix(raw_data , graph_params)
+    W  = build_affinity_matrix(raw_data , graph_params)
     if graph_params.Laplacian_type == 'n':
-        return affinity_matrix_to_laplacian(W,mode = 'n'), graph_degree
+        return affinity_matrix_to_laplacian(W,mode = 'n')
     else:
-        return affinity_matrix_to_laplacian(W,mode = 'u'), graph_degree
+        return affinity_matrix_to_laplacian(W,mode = 'u')
 
 def generate_eigenvectors(L,Neig):
     """ short hand for using scipy arpack package
@@ -136,6 +155,87 @@ def generate_eigenvectors(L,Neig):
 
     """
     return eigsh(L,Neig,which = 'SM')    
+
+
+
+
+
+
+
+class BuildGraph(Parameters):
+    """ Class for graph construction and computing the graph Laplacian
+
+    keyword arguments : 
+    -----------
+    Eig_solver : string
+        'full' : compute the full Laplacian matrix 
+        'nystrom' : specify Neig, num_nystrom(number of samples), gamma
+        'arpack' : specify Neig
+    (--Not using Nystrom)
+        affinity : string
+            'rbf' : use rbf kernel  exp(|x-y|^2/gamma)
+                specify gamma, neighbor_type = 'full', or 'knearest' with n_neighbors
+            'z-p' : adaptive kernel 
+                specify n_neighbors
+            '0-1' : return an unweighted graph 
+                specify n_neighbors
+        gamma : double
+            width of the rbf kernel
+        n_neighbors : integer
+            Number of neighbors to use when constructing the affinity matrix using
+            the nearest neighbors method. 
+        neighbor_type : string. 
+            'full' 'knearest'
+    (--Using Nystrom)
+        affinity : only 'rbf' 
+        gamma : required
+        num_nystrom : number of sample points
+    Laplacian_type : 'n', normalized, 'u', unnormalized
+
+    Methods :
+    -----------    
+    build_Laplacian(raw_data)
+    """ 
+    def __init__(self, **kwargs): #interface for specifically setting graph parameters
+        self.set_parameters(**kwargs)
+        self.set_to_default_parameters(_graph_params_default_values)
+        if self.affinity == '0-1':
+            self.neighbor_type = 'knearest'
+
+
+    def build_Laplacian(self,raw_data):
+        """ Build graph Laplacian
+
+        Input : 
+        -----------
+        raw_data : ndarray, shape (n_samples, n_features)
+            Raw input data.
+
+        """ 
+        self.laplacian_matrix_ = None
+        if self.Eig_solver == 'nystrom': # add code for Nystrom Extension separately   
+            if self.num_nystrom is None:
+                raise ValueError("Please Provide the number of sample points in num_nystrom")
+            if self.gamma is None:
+                print("Warning : Kernel width gamma not provided. Using Default Estimation in Nystrom")                      
+            E,V= nystrom(raw_data = raw_data, num_nystrom  = self.num_nystrom, sigma = self.gamma)
+            E = E[:self.Neig]
+            V = V[:,:self.Neig]
+            self.laplacian_matrix_ = {'V': V, 'E': E}
+        else: 
+            graph_params = Parameters(**self.__dict__) # for backward compatibility with older version
+            Lap = build_laplacian_matrix(raw_data = raw_data,graph_params = graph_params)
+            if self.Eig_solver  == 'arpack':
+                E,V = generate_eigenvectors(Lap,self.Neig)
+                E = E[:,np.newaxis]
+                self.laplacian_matrix_ = {'V': V, 'E': E}
+                return 
+            elif self.Eig_solver == 'full':
+                self.laplacian_matrix_ = Lap
+                return
+            else:
+                raise NameError("Eig_Solver Needs to be either 'nystrom', 'arpack' or 'full' ")
+
 
 
 
