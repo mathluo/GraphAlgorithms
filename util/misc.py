@@ -98,18 +98,21 @@ def vector_to_labels(V):
     return np.argmax(V, axis = 1)
 
 
-def labels_to_vector(in_labels):
+def labels_to_vector(labels,vec_dim = None):
     """  convert a standard label 0,1,2... (n_samples,)
     to a multiclass assignment vector (n_samples, n_class) by assigning to e_k
 
     Parameters
     -----------
-    in_labels : ndarray, shape(n_samples,)
+    labels : ndarray, shape(n_samples,)
 
     """
-    labels = to_standard_labels(in_labels)
+    # labels = to_standard_labels(in_labels)
     labels = labels.astype(int)
-    n_class = np.max(labels)+1
+    if vec_dim is None:
+        n_class = np.max(labels)+1
+    else:
+        n_class = vec_dim
     vec = np.zeros([labels.shape[0], n_class])
     for i in range(n_class):
         vec[labels == i,i] = 1.
