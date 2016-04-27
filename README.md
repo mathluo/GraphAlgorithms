@@ -27,7 +27,7 @@ Though in some cases, modifying one attribute automatically erases dependent att
 An instance of the `LaplacianClustering()` object(e.g. `clf` in the example above) contains a `data` field and a `graph` field. 
 `clf.graph` is an instance of the `util.BuildGraph()` class, which contains the full functionalities for building a graph Laplacian from given data. If you wish to use only the graph Laplacian functionalites but not the classifiers, you can use the `util.BuildGraph()` class directly.
 
-
+(See more on the Ipython Notebook demos in demo)
 
 
 
