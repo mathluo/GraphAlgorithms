@@ -25,6 +25,23 @@ from scipy.linalg import sqrtm
 from scipy.linalg import eigh
 from scipy.linalg import eig
 
+# def make_kernel(width = None):
+#     """ Construct a Gaussian-like patch and flatten 
+#     the patch to desired format
+#     """
+#     kernel = np.zeros([2*width+1,2*width+1])
+#     for d in range(1,width+1):
+#         value= 1. / ((2*d+1.)*(2*d+1.))
+#         for i in range(-d, d+1):
+#             for j in range(-d, d+1): 
+#                 kernel[width -i,width - j ] = kernel[ width - i,width - j ] + value
+#     kernel = kernel/width
+#     kernel = kernel.flatten()
+#     kernel = np.array([kernel, ]*n_channels)
+#     #kernel = kernel.flatten()
+#     return kernel
+
+
 def imageblocks(im, width, format = 'flat'):
     """Extract all blocks of specified size from an image or list of images
     Automatically pads image to ensure num_blocks = num_pixels
@@ -46,7 +63,7 @@ def imageblocks(im, width, format = 'flat'):
     sb.shape = (-1, blksz, blksz, n_channels)
     n_samples = sb.shape[0]
     if format == 'flat':
-        return sb.transpose([0,3,1,2]).reshape(n_samples,n_channels,blksz*blksz).transpose([0,2,1])
+        return sb.transpose([0,3,1,2]).reshape(n_samples,n_channels*blksz*blksz)
     else:
         return sb
 
@@ -194,18 +211,20 @@ def generate_initial_value_binary(opt = 'rd_equal', V = None, n_samples = None):
         number of nodes in the graph
 
     """    
+    res = None
     if opt == 'rd_equal':
         ind = permutation(n_samples)
         u_init = np.zeros(n_samples)
         mid = n_samples/2
         u_init[ind[:mid]] = 1
         u_init[ind[mid:]] = -1
-        return u_init
+        res =  u_init
     elif opt == 'rd':
         u_init = np.random.uniform(low = -1, high = 1, size = n_samples)
-        return u_init
+        res = u_init
     elif opt == 'eig':
-        return V[:,1].copy()
+        res =  V[:,1].copy()
+    return res
 
 class Parameters: # write a parameter class for easier parameter manipulation
     """ Class for managing parameters. Initialize with any keyword arguments
@@ -254,7 +273,46 @@ class Parameters: # write a parameter class for easier parameter manipulation
         """
         for name in default_values:
             if not hasattr(self,name):
-                setattr(self,name,default_values[name])            
+                setattr(self,name,default_values[name])       
+
+
+class ImageHandler:
+    """ Class for reading and doing patch operations on images 
+        ----------> (dim[1] / width / x)
+        |
+        |   Image
+        |
+        v
+      (dim[0] /height / y)
+
+      flatten direction : dim 1, dim 0
+    """
+    def __init__(self,image):     
+        self.data = image
+        self.n_channels = image.shape[2]
+        self. width = image.shape[1]
+        self. height = image.shape[0]
+    def imageblocks(self,half_patch_size,format = 'flat'):
+        return imageblocks(self.data, width = half_patch_size, format = format)
+    def to_2d(self,u_1d):
+        assert(u_1d.shape[0] == self.height * self.width)
+        return u_1d.reshape(self.height,self.width)
+    def block_to_1dindex(self,x,y,w,h):
+        assert(x>=0 and y>=0)
+        assert(x+w<=self.width+1 and y+h <= self.height+1 )
+        res = np.zeros(w*h)
+        for i, x_ind in enumerate(range(x,x+w)):
+            for j, y_ind in enumerate(range(y,y+h)):
+                res[i*h+j] = y_ind*self.width + x_ind
+        return res.astype(int)
+    def generate_fidelity_from_block(self,x,y,w,h,value):
+        ind = self.block_to_1dindex(x,y,w,h)
+        return np.concatenate((ind[::,np.newaxis],value*np.ones([w*h,1])),axis = 1)
+
+
+
+
+
 
 
 

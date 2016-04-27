@@ -20,6 +20,6 @@ from .misc import to_binary_labels
 from .misc import compute_error_rate
 from .misc import imageblocks
 from .misc import Parameters
+from .misc import ImageHandler
 from .nystrom import nystrom
-from .nystrom import make_kernel
 from .nystrom import flatten_23

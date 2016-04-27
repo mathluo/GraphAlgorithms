@@ -24,22 +24,6 @@ from scipy.linalg import eigh
 from scipy.linalg import eig
 
 
-def make_kernel(width = None, n_channels = None):
-    """ Construct a Gaussian-like patch and flatten 
-    the patch to desired format
-    """
-    kernel = np.zeros([2*width+1,2*width+1])
-    for d in range(1,width+1):
-        value= 1. / ((2*d+1.)*(2*d+1.))
-        for i in range(-d, d+1):
-            for j in range(-d, d+1): 
-                kernel[width -i,width - j ] = kernel[ width - i,width - j ] + value
-    kernel = kernel/width
-    kernel = kernel.flatten()
-    kernel = np.array([kernel, ]*n_channels)
-    kernel = kernel.flatten()
-    return kernel
-
 
 def flatten_23(v): # short hand for the swapping axis
     return v.reshape(v.shape[0],-1, order = 'F')
@@ -70,6 +54,10 @@ def nystrom(raw_data, num_nystrom  = 300, sigma = None): # basic implementation
     # if kernel_flag: # spatial kernel involved   # depreciated. Put spatial mask in the image patch extraction process
     #     kernel = make_kernel(width = width, n_channels = n_channels)
     #     scale_sqrt = np.sqrt(kernel).reshape(1,len(kernel))
+    if sigma is None:
+        print("graph kernel width not specified, using default value 1")
+        sigma = 1
+
     num_rows = raw_data.shape[0]
     index = permutation(num_rows)
     if num_nystrom == None:
@@ -119,7 +107,7 @@ def nystrom(raw_data, num_nystrom  = 300, sigma = None): # basic implementation
     V[index,:] = V.copy()
     V = np.real(V)
     E = 1-E
-
+    E = E[:,np.newaxis]
     return E,V
 
 

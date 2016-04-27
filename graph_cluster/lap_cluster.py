@@ -369,7 +369,7 @@ class LaplacianClustering(Parameters):
         last four for unsupervised learning.     
     n_class : integer 
         number of classes (This can be inferred from ground_truth if provided)   
-    u_init : ndarray, shape(n_samples,)
+    u_init : ndarray, shape(n_samples,) or (n_samples,k) for multiclass
         initial labels or score for algorithm
     fid : ndarray, shape(num_fidelity, 2)
         index and label of the fidelity points. fid[i,0] 
@@ -469,6 +469,7 @@ class LaplacianClustering(Parameters):
 
         try : 
             self.graph.set_parameters(**kwargs)
+            self.graph.build_Laplacian(self.data.raw_data)
         except : 
             raise AttributeError("self.graph Non-existent. Use .build_Laplacian() to construct the graph object")
 
@@ -574,6 +575,13 @@ class LaplacianClustering(Parameters):
 
         if self.u_init is None:
             print("u_init not provided. Generating random initial condition.")
+            self.generate_initial_value()
+        if (len(self.u_init.shape) == 1):
+            if(self.n_class !=2)  :
+                print("u_init dimension not matching n_class. Possiblly out of date. Generating new one")
+                self.generate_initial_value()
+        elif (self.u_init.shape[1] != self.n_class) :
+            print("u_init dimension not matching n_class. Possiblly out of date. Generating new one")
             self.generate_initial_value()
 
         # check if the laplacian is in eigenvector form

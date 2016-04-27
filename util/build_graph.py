@@ -92,7 +92,12 @@ def build_affinity_matrix(raw_data,graph_params):
             dist_matrix = cdist(raw_data,raw_data,'sqeuclidean')
 
         if graph_params.affinity == 'rbf':
-            gamma = graph_params.gamma
+            gamma = None
+            if graph_params.gamma is None:
+                print("graph kernel width gamma not specified, using default value 1")
+                gamma = 1
+            else : 
+                gamma = graph_params.gamma
             affinity_matrix_ = np.exp(-gamma*dist_matrix)
 
     affinity_matrix_[affinity_matrix_ == 1.] = 0. 
